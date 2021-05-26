@@ -175,15 +175,20 @@ str(ema_data6)
 #ema_data4[,32:35] <- lapply(ema_data4[,32:35], as.numeric)
 
 #Make Variables Factor
-ema_data4[,2:8] <- lapply(ema_data4[,2:8], as.factor)
-ema_data4[,30:31] <- lapply(ema_data4[,30:31], as.factor)
+ema_data6[,1:7] <- lapply(ema_data6[,1:7], as.factor)
+ema_data6[,34] <- lapply(ema_data6[,34], as.factor)
+
 
 #Make Variables Numeric
-ema_data4[,12:29] <- lapply(ema_data4[,12:29], as.numeric)
-ema_data4[,32:35] <- lapply(ema_data4[,32:35], as.numeric)
+ema_data6[,11:26] <- lapply(ema_data6[,11:26], as.numeric)
+ema_data6[,29:31] <- lapply(ema_data6[,29:31], as.numeric)
+ema_data6[,32] <- lapply(ema_data6[,32], as.numeric)
+```
 
-#Change Variables to Date
-ema_data4$Date <- as.Date(ema_data4$Date, format = "%m/%d/%Y")
+##Remove Variables
+```{r}
+ema_data6 <- ema_data6 %>% 
+  dplyr::select(-c(aSM12, aSM13))
 ```
 
 ##Clean Smartphone
@@ -237,73 +242,112 @@ smartphone_data3$Day <- as.factor(smartphone_data3$Day)
 
 ##Merge Data
 ```{r}
-data1 <- full_join(ema_data4, smartphone_data3, by = c("subject_id", "Day"))
+data1 <- full_join(ema_data6, smartphone_data3, by = c("subject_id", "Day", "Date"))
 ```
 
 ##Create Active vs Passive Variable
 ```{r}
+#Recode from 2 and 1 to 1 and 0
+
+data1$act_1[data1$act_1 == 1] <- 0
+data1$act_1[data1$act_1 == 2] <- 1
+data1$act_2[data1$act_2 == 1] <- 0
+data1$act_2[data1$act_2 == 2] <- 1
+data1$act_3[data1$act_3 == 1] <- 0
+data1$act_3[data1$act_3 == 2] <- 1
+data1$act_4[data1$act_4 == 1] <- 0
+data1$act_4[data1$act_4 == 2] <- 1
+data1$act_5[data1$act_5 == 1] <- 0
+data1$act_5[data1$act_5 == 2] <- 1
+data1$act_7[data1$act_7 == 1] <- 0
+data1$act_7[data1$act_7 == 2] <- 1
+
+data1$pas_1[data1$pas_1 == 1] <- 0
+data1$pas_1[data1$pas_1 == 2] <- 1
+data1$pas_2[data1$pas_2 == 1] <- 0
+data1$pas_2[data1$pas_2 == 2] <- 1
+data1$pas_3[data1$pas_3 == 1] <- 0
+data1$pas_3[data1$pas_3 == 2] <- 1
+data1$pas_4[data1$pas_4 == 1] <- 0
+data1$pas_4[data1$pas_4 == 2] <- 1
+
 data2 <- data1 %>% 
   dplyr::rowwise() %>% 
-  mutate(act_total = sum(act_1, act_2, act_3, act_4, act_5, act_6, act_7, na.rm = TRUE)) %>% 
-  mutate(pas_total = sum(pas_1, pas_2, pas_3, pas_4, na.rm = TRUE)) %>% 
-  mutate(act_to_pas = act_total/pas_total)
+  mutate(act_total = sum(act_1, act_2, act_3, act_4, act_5, act_7)) %>% 
+  mutate(pas_total = sum(pas_1, pas_2, pas_3, pas_4)) %>% 
+  mutate(type_of_use = case_when(
+      pas_total <= 0 & act_total <= 0 ~ 0,
+      pas_total > 0 & act_total <= 0 ~ 1,
+      pas_total <= 0 & act_total > 0 ~ 2,
+      pas_total > 0 & act_total > 0 ~ 3))
+  
 ```
 
 #Create Lagged Variables
 ```{r}
 #Create Next Day Smartphone Minutes and Hours
-data1$smartphone_total_min_next <- Hmisc::Lag(data1$smartphone_total_min, -1)
-data1$smartphone_total_hours_next <- Hmisc::Lag(data1$smartphone_total_hours, -1)
+data3 <- data2 %>% 
+  group_by(subject_id) %>% 
+  mutate(smartphone_total_min_lead1 = lead(smartphone_total_min, n = 1),
+         smartphone_total_min_lead2 = lead(smartphone_total_min, n = 2),
+         smartphone_total_hours_lead1 = lead(smartphone_total_hours, n = 1),
+         smartphone_total_hours_lead2 = lead(smartphone_total_hours, n = 2))
 
 #Create Next Day Affect
-data1$anxious_next <- Hmisc::Lag(data1$anxious, -1)
-data1$stress_next <- Hmisc::Lag(data1$stress, -1)
-data1$happy_next <- Hmisc::Lag(data1$happy, -1)
-data1$sad_next <- Hmisc::Lag(data1$sad, -1)
-data1$lonely_next <- Hmisc::Lag(data1$lonely, -1)
-
-
-test <- data1 %>% 
-  dplyr::select(subject_id, Day, smartphone_total_min, smartphone_total_min_next)
+data4 <- data3 %>% 
+  group_by(subject_id) %>% 
+  mutate(anxiety_lead1 = lead(anxious, n = 1),
+         anxiety_lead2 = lead(anxious, n = 2),
+         stress_lead1 = lead(stress, n = 1),
+         stress_lead2 = lead(stress, n = 2),
+         sad_lead1 = lead(sad, n = 1),
+         sad_lead2 = lead(sad, n = 2),
+         lonely_lead1 = lead(lonely, n = 1),
+         lonely_lead2 = lead(lonely, n = 2))
 ```
 
 ###Add Missing Day of Week and Date
-```{r}
-data2 <- data1 %>% 
-  tidyr::complete(subject_id, nesting(Day, DayofWeek), fill = list(DayofWeek = c("Monday", 
-                                                                        "Tuesday", 
-                                                                        "Wednesday", 
-                                                                        "Thursday", 
-                                                                        "Friday", 
-                                                                        "Saturday", 
-                                                                        "Sunday")))
+```{r eval=FALSE, include=FALSE}
+#data2 <- data1 %>% 
+#  tidyr::complete(subject_id, nesting(Day, DayofWeek), fill = list(DayofWeek = c("Monday", 
+#                                                                        "Tuesday", 
+#                                                                        "Wednesday", 
+#                                                                        "Thursday", 
+#                                                                        "Friday", 
+#                                                                        "Saturday", 
+#                                                                        "Sunday")))
 ```
 
 ##Check Missing Data
 ```{r}
 #Overall missing data
-data1 %>% 
+data4 %>% 
   naniar::vis_miss()
 
 #Combination of missing data
-data1 %>% 
+data4 %>% 
   naniar::gg_miss_upset()
 
 #Count of missing data
-data1 %>% 
-  naniar::gg_miss_var()
+naniar::gg_miss_var(data4, Day)
 ```
 
 ##Descriptives
 ```{r}
-describeBy(data1)
+describeBy(data4)
 
-data1$sad_log10 <- log(data1$sad)
-data1$anxious_log10 <- log(data1$anxious)
-data1$lonely_log10 <- log(data1$lonely)
+data4$sad_log10 <- log(data4$sad)
+data4$sad_lead1_log10 <- log(data4$sad_lead1)
+data4$sad_lead2_log10 <- log(data4$sad_lead2)
+data4$anxious_log10 <- log(data4$anxious)
+data4$anxiety_lead1_log10 <- log(data4$anxiety_lead1)
+data4$anxiety_lead2_log10 <- log(data4$anxiety_lead2)
+data4$lonely_log10 <- log(data4$lonely)
+data4$lonely_lead1_log10 <- log(data4$lonely_lead1)
+data4$lonely_lead2_log10 <- log(data4$lonely_lead2)
 
-data1$total_notifications_log10 <- log(data1$total_notifications)
-data1$total_notifications_log10[data1$total_notifications_log10 == "-Inf"] <- NA
+data4$total_notifications_log10 <- log(data4$total_notifications)
+data4$total_notifications_log10[data4$total_notifications_log10 == "-Inf"] <- NA
 ```
 
 ###Plot
@@ -334,16 +378,18 @@ boxplot(data1$total_notifications)
 #Analyses
 ##Create Between and Within Person Terms
 ```{r}
-data1 <- bmlm::isolate(data1, by = "subject_id",
-             value = c("smartphone_total_hours", "sad"),
+data4 <- bmlm::isolate(data4, by = "subject_id",
+             value = c("smartphone_total_hours", "sad", "stress", "anxious", "happy", "lonely"),
              which = "both")
 ```
 
 ##Covariation of Smartphone Use and Mood
 ```{r}
-concurrent_model <- lmer(sad ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1| subject_id), REML = TRUE, data = data1)
+concurrent_model <- lmer(sad ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1| subject_id), REML = TRUE, data = data4)
 
-concurrent_model_ris <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 + smartphone_total_hours_cw | subject_id), REML = TRUE, data = data1)
+concurrent_model_ris <- lmer(lonely_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1  | subject_id), REML = TRUE, data = data4)
+
+concurrent_model_ris <- lmer(smartphone_total_hours_lead1 ~ 1 + sad_cb + sad_cw + (1  | subject_id), REML = TRUE, data = data4)
 
 summary(concurrent_model_ris)
 confint(concurrent_model)
@@ -364,7 +410,7 @@ REplot(concurrent_model)
 #Graph Covariation
 ##Convert variables to Z-Score
 ```{r}
-graph_data <- data1 %>% 
+graph_data <- data4 %>% 
   dplyr::select(subject_id,
                 Day,
                 smartphone_total_hours,
