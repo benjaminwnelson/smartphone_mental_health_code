@@ -88,7 +88,7 @@ ema_data2 <- ema_data1 %>%
                 aSM7, #Social Media Usage: To meet new people
                 aSM8, #Social Media Usage: To get likes and positive feedback
                 aSM9, #Social Media Usage: To browse my friends' profiles/content
-                aSM10, #Social Media Usage: To search and buy products
+                #aSM10, #Social Media Usage: To search and buy products
                 aSM11, #Social Media Usage: To vent
                 aSM12, #Social Media Usage: Other (please specify)
                 aSM13, #Social Media Usage: Other (please specify)
@@ -111,24 +111,9 @@ ema_data2 <- ema_data1 %>%
                 act_3 = aSM6,
                 act_4 = aSM7,
                 act_5 = aSM8,
-                act_6 = aSM10,
+                #act_6 = aSM10,
                 act_7 = aSM11) %>% 
   dplyr::filter(Submitted == 1)
-
-
-
-
-aSM1, #Social Media Usage: To fill up spare time because I was bored
-                aSM2, #Social Media Usage: For entertainment
-                aSM3, #Social Media Usage: To stay up to date with current events and news
-                aSM4, #Social Media Usage: To connect with friends
-                aSM5, #Social Media Usage: To share photos or videos
-                aSM6, #Social Media Usage: To share my opinion
-                aSM7, #Social Media Usage: To meet new people
-                aSM8, #Social Media Usage: To get likes and positive feedback
-                aSM9, #Social Media Usage: To browse my friends' profiles/content
-                aSM10, #Social Media Usage: To search and buy products
-                aSM11, #Social Media Usage: To vent
 ```
 
 ###Label Factors
@@ -150,13 +135,36 @@ ema_data3 <- ema_data2[-158,]
 ema_data4 <- ema_data3 %>% 
   tidyr::complete(subject_id, Day = 0:14)
 
-#Add Day 0 to all subjects. Make dataset wide and create day 0, then make long
+#Fill in Phone Type
+ema_data4 <- ema_data4 %>% 
+  fill("PhoneType")
 
+ema_data4$Date <- lubridate::as_date(ema_data4$Date, format = "%m/%d/%Y")
+
+ema_data5 <- ema_data4 %>% 
+  mutate(Date = lubridate::as_date(Date),
+         Date1 = lead(Date) - 1,
+         Date2 = ifelse(is.na(Date), as.character(Date1), as.character(Date))) %>% 
+  dplyr::select(-c(Date, Date1)) %>% 
+  rename(Date = Date2)
+
+ema_data5$Date <- lubridate::as_date(ema_data5$Date, format = "%Y-%m-%d")
+
+
+#Create New Weekday Variable
+ema_data5$weekday <- weekdays(ema_data5$Date)
+
+#Create Weekday and Weekend Variable
+ema_data5$TypeofDay <- ifelse(weekdays(ema_data5$Date) %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+
+#Remove Old Variables
+ema_data6 <- ema_data5 %>% 
+  dplyr::select(-DayofWeek)
 ```
 
 ###Check Structure
 ```{r}
-str(ema_data4)
+str(ema_data6)
 
 #Make Variables Factor
 #ema_data4[,2:8] <- lapply(ema_data4[,2:8], as.factor)
