@@ -1,0 +1,417 @@
+---
+title: "Smartphone Use and Mental Health"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#Set Working Directory
+```{r}
+setwd("~/Desktop/Manuscripts/Smartphone Use and Mental Health")
+```
+
+# Load Packages_______________________________________
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidyr)
+library(tidylog)
+library(ggplot2)
+library(dplyr)
+library(psych)
+library(lubridate)
+library(summarytools)
+library(styler)
+library(readr)
+library(janitor)
+
+library(corrplot)
+library(zoo)
+library(magrittr)
+library(readr)
+library(naniar)
+library(car)
+library(reshape2)
+library(jmv)
+
+library(lme4) #for estimating multilevel models
+library(lmerTest) #for p-values added to lme4 output
+library(texreg) #for better outputs
+library(effects) #for visualizing multilevel model effects
+library(sjstats) #might have to manually add
+library(sjPlot) #Print results
+library(sjlabelled) #Allows for custom printed results
+library(sjmisc)
+library(r2mlm)
+library(merTools)
+library(DHARMa) #model fit for mlm
+```
+
+#Load Data
+```{r}
+ema_data1 <- data.table::fread("~/Desktop/Manuscripts/Smartphone Use and Mental Health/NT_TTP_DailyDiary.csv")
+
+smartphone_data1 <- data.table::fread("~/Desktop/Manuscripts/Smartphone Use and Mental Health/neuroteen_ttp_screentime_merged 4.22.21.csv")
+
+smartphone_data1 <- smartphone_data1 %>% 
+  dplyr::select(-V1)
+```
+
+#Clean Data
+##EMA Data Cleaning
+###Select Variables
+```{r}
+ema_data2 <- ema_data1 %>% 
+  dplyr::select(ID,
+                PhoneType,
+                DayofWeek,
+                TypeofDay,
+                Day,
+                EMAType,
+                Submitted,
+                aSchoolDay,
+                Date,
+                StartTime,
+                EndTime,
+                Duration,
+                aEmotToday1, #anxious
+                aEmotToday4, #stress
+                aEmotToday5, #happy
+                aEmotToday9, #sad
+                aEmotToday10, #lonely
+                aSM, #Social Media: Did you use social media (e.g., Instagram, TikTok, Twitter, Facebook, YouTube, Reddit, or other sites) today?
+                aSM1, #Social Media Usage: To fill up spare time because I was bored
+                aSM2, #Social Media Usage: For entertainment
+                aSM3, #Social Media Usage: To stay up to date with current events and news
+                aSM4, #Social Media Usage: To connect with friends
+                aSM5, #Social Media Usage: To share photos or videos
+                aSM6, #Social Media Usage: To share my opinion
+                aSM7, #Social Media Usage: To meet new people
+                aSM8, #Social Media Usage: To get likes and positive feedback
+                aSM9, #Social Media Usage: To browse my friends' profiles/content
+                aSM10, #Social Media Usage: To search and buy products
+                aSM11, #Social Media Usage: To vent
+                aSM12, #Social Media Usage: Other (please specify)
+                aSM13, #Social Media Usage: Other (please specify)
+                aSM_Feel, #Social Media: How did social media make you feel today?
+                aSM_Mood1, #Social Media: How much did social media have a positive impact on your mood today?
+                aSM_Mood2, #Social Media: How much did social media have a negative impact on your mood today?
+                aSM_Time) %>%  #Social Media: How much total time did you spend using social media today?
+  dplyr::rename(subject_id = ID,
+                anxious = aEmotToday1,
+                stress = aEmotToday4,
+                happy = aEmotToday5,
+                sad = aEmotToday9,
+                lonely = aEmotToday10,
+                pas_1 = aSM1,
+                pas_2 = aSM2,
+                pas_3 = aSM3,
+                pas_4 = aSM9,
+                act_1 = aSM4,
+                act_2 = aSM5,
+                act_3 = aSM6,
+                act_4 = aSM7,
+                act_5 = aSM8,
+                act_6 = aSM10,
+                act_7 = aSM11) %>% 
+  dplyr::filter(Submitted == 1)
+
+
+
+
+aSM1, #Social Media Usage: To fill up spare time because I was bored
+                aSM2, #Social Media Usage: For entertainment
+                aSM3, #Social Media Usage: To stay up to date with current events and news
+                aSM4, #Social Media Usage: To connect with friends
+                aSM5, #Social Media Usage: To share photos or videos
+                aSM6, #Social Media Usage: To share my opinion
+                aSM7, #Social Media Usage: To meet new people
+                aSM8, #Social Media Usage: To get likes and positive feedback
+                aSM9, #Social Media Usage: To browse my friends' profiles/content
+                aSM10, #Social Media Usage: To search and buy products
+                aSM11, #Social Media Usage: To vent
+```
+
+###Label Factors
+```{r}
+ema_data2$PhoneType <- factor(ema_data2$PhoneType,
+                            levels = c("1", "2"),
+                            labels = c("iOS", "Android"))
+
+ema_data2$aSchoolDay <- factor(ema_data2$aSchoolDay,
+                            levels = c("1", "2", "3"),
+                            labels = c("In Person School", "Virtual School", "No School"))
+
+ema_data3 <- ema_data2[-158,]
+```
+
+###Add missing observations
+```{r}
+#This adds the missing day for any missing days for each participant
+ema_data4 <- ema_data3 %>% 
+  tidyr::complete(subject_id, Day = 0:14)
+
+#Add Day 0 to all subjects. Make dataset wide and create day 0, then make long
+
+```
+
+###Check Structure
+```{r}
+str(ema_data4)
+
+#Make Variables Factor
+#ema_data4[,2:8] <- lapply(ema_data4[,2:8], as.factor)
+#ema_data4[,18:30] <- lapply(ema_data4[,18:30], as.factor)
+
+#Make Variables Numeric
+#ema_data4[,12:17] <- lapply(ema_data4[,12:17], as.numeric)
+#ema_data4[,32:35] <- lapply(ema_data4[,32:35], as.numeric)
+
+#Make Variables Factor
+ema_data4[,2:8] <- lapply(ema_data4[,2:8], as.factor)
+ema_data4[,30:31] <- lapply(ema_data4[,30:31], as.factor)
+
+#Make Variables Numeric
+ema_data4[,12:29] <- lapply(ema_data4[,12:29], as.numeric)
+ema_data4[,32:35] <- lapply(ema_data4[,32:35], as.numeric)
+
+#Change Variables to Date
+ema_data4$Date <- as.Date(ema_data4$Date, format = "%m/%d/%Y")
+```
+
+##Clean Smartphone
+###Select Variables
+```{r}
+smartphone_data2 <- smartphone_data1 %>% 
+  dplyr::select(subject_id,
+                date,
+                day,
+                finished,
+                correct_screenshot_screentime,
+                correct_screenshot_pickups,
+                correct_screenshot_notifications,
+                time_limit,
+                grey_screentime,
+                unusual_night_use,
+                total_screentime_hours,
+                total_screentime_minutes,
+                total_pickups,
+                total_notifications) %>% 
+  dplyr::filter(finished == 1,
+                correct_screenshot_screentime == 1) %>% 
+  dplyr::rename(Date = date,
+                Day = day)
+```
+
+###Merge Screentime Hours and Minutes Columns
+####Turn Screentime Hours Column to Minutes
+```{r}
+smartphone_data2$total_screentime_hours_to_min <- smartphone_data2$total_screentime_hours*60
+```
+
+####Add New Minutes Column to Minutes
+```{r}
+smartphone_data3 <- smartphone_data2 %>% 
+  dplyr::rowwise() %>% 
+  mutate(smartphone_total_min = sum(total_screentime_minutes, total_screentime_hours_to_min, na.rm = TRUE)) %>% 
+  dplyr::select(-c(total_screentime_minutes, total_screentime_hours, total_screentime_hours_to_min))
+
+smartphone_data3$smartphone_total_hours <- smartphone_data3$smartphone_total_min/60
+```
+
+##Check Structure
+```{r}
+str(smartphone_data3)
+
+smartphone_data3$Date <- as.Date(smartphone_data3$Date, format = "%m/%d/%y")
+
+smartphone_data3$Day <- as.factor(smartphone_data3$Day)
+```
+
+##Merge Data
+```{r}
+data1 <- full_join(ema_data4, smartphone_data3, by = c("subject_id", "Day"))
+```
+
+##Create Active vs Passive Variable
+```{r}
+data2 <- data1 %>% 
+  dplyr::rowwise() %>% 
+  mutate(act_total = sum(act_1, act_2, act_3, act_4, act_5, act_6, act_7, na.rm = TRUE)) %>% 
+  mutate(pas_total = sum(pas_1, pas_2, pas_3, pas_4, na.rm = TRUE)) %>% 
+  mutate(act_to_pas = act_total/pas_total)
+```
+
+#Create Lagged Variables
+```{r}
+#Create Next Day Smartphone Minutes and Hours
+data1$smartphone_total_min_next <- Hmisc::Lag(data1$smartphone_total_min, -1)
+data1$smartphone_total_hours_next <- Hmisc::Lag(data1$smartphone_total_hours, -1)
+
+#Create Next Day Affect
+data1$anxious_next <- Hmisc::Lag(data1$anxious, -1)
+data1$stress_next <- Hmisc::Lag(data1$stress, -1)
+data1$happy_next <- Hmisc::Lag(data1$happy, -1)
+data1$sad_next <- Hmisc::Lag(data1$sad, -1)
+data1$lonely_next <- Hmisc::Lag(data1$lonely, -1)
+
+
+test <- data1 %>% 
+  dplyr::select(subject_id, Day, smartphone_total_min, smartphone_total_min_next)
+```
+
+###Add Missing Day of Week and Date
+```{r}
+data2 <- data1 %>% 
+  tidyr::complete(subject_id, nesting(Day, DayofWeek), fill = list(DayofWeek = c("Monday", 
+                                                                        "Tuesday", 
+                                                                        "Wednesday", 
+                                                                        "Thursday", 
+                                                                        "Friday", 
+                                                                        "Saturday", 
+                                                                        "Sunday")))
+```
+
+##Check Missing Data
+```{r}
+#Overall missing data
+data1 %>% 
+  naniar::vis_miss()
+
+#Combination of missing data
+data1 %>% 
+  naniar::gg_miss_upset()
+
+#Count of missing data
+data1 %>% 
+  naniar::gg_miss_var()
+```
+
+##Descriptives
+```{r}
+describeBy(data1)
+
+data1$sad_log10 <- log(data1$sad)
+data1$anxious_log10 <- log(data1$anxious)
+data1$lonely_log10 <- log(data1$lonely)
+
+data1$total_notifications_log10 <- log(data1$total_notifications)
+data1$total_notifications_log10[data1$total_notifications_log10 == "-Inf"] <- NA
+```
+
+###Plot
+```{r}
+#Sad
+hist(data1$sad)
+boxplot(data1$sad)
+
+#Sad
+hist(data1$lonely)
+boxplot(data1$lonely)
+
+#Smartphone Use Hours
+hist(data1$smartphone_total_hours)
+boxplot(data1$smartphone_total_hours)
+
+#Pickups
+hist(data1$total_pickups)
+boxplot(data1$total_pickups)
+
+#Notifications
+hist(data1$total_notifications)
+boxplot(data1$total_notifications)
+```
+
+
+
+#Analyses
+##Create Between and Within Person Terms
+```{r}
+data1 <- bmlm::isolate(data1, by = "subject_id",
+             value = c("smartphone_total_hours", "sad"),
+             which = "both")
+```
+
+##Covariation of Smartphone Use and Mood
+```{r}
+concurrent_model <- lmer(sad ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1| subject_id), REML = TRUE, data = data1)
+
+concurrent_model_ris <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 + smartphone_total_hours_cw | subject_id), REML = TRUE, data = data1)
+
+summary(concurrent_model_ris)
+confint(concurrent_model)
+performance::check_convergence(concurrent_model) #converged okay
+performance::check_singularity(concurrent_model) #is not singular
+performance::r2(concurrent_model)
+performance::icc(concurrent_model)
+ggstatsplot::ggcoefstats(concurrent_model)
+performance::check_model(concurrent_model)
+performance::check_collinearity(concurrent_model)
+performance::model_performance(concurrent_model)
+FElmer(concurrent_model)
+FEplot(concurrent_model)
+ICClmer(concurrent_model)
+REplot(concurrent_model)
+```
+
+#Graph Covariation
+##Convert variables to Z-Score
+```{r}
+graph_data <- data1 %>% 
+  dplyr::select(subject_id,
+                Day,
+                smartphone_total_hours,
+                sad)
+
+graph_data$smartphone_total_hours_zscore <- scale(graph_data$smartphone_total_hours)
+graph_data$sad_zscore <- scale(graph_data$sad)
+
+
+str(graph_data)
+```
+
+##Turn Data Into Long
+```{r}
+graph_data2 <- graph_data %>%  
+  pivot_longer(cols = c(smartphone_total_hours_zscore, sad_zscore), names_to = "variable", values_to = "value")
+
+str(graph_data2)
+graph_data2$variable <- as.factor(graph_data2$variable)
+graph_data2$Day <- as.numeric(graph_data2$Day)
+```
+
+
+##Graph
+```{r}
+#Plot Smartphone Use and Sadness
+smartphone_sad_graph1 <- ggplot(data=subset(graph_data2), aes(x = Day, y = value, color = variable)) +
+  #geom_line(aes(group = SID), alpha = .1) + #This fades the individual lines
+  stat_summary(data=subset(graph_data2), aes(group=variable), fun=mean, geom="smooth") + 
+  theme(axis.ticks = element_line(colour = "black"), 
+    panel.grid.major = element_line(colour = "white"), 
+    panel.grid.minor = element_line(colour = "white"), 
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10, colour = "black"), 
+    axis.text.x = element_text(colour = "black"), 
+    axis.text.y = element_text(colour = "black"), 
+    plot.title = element_text(size = 10), 
+    legend.text = element_text(size = 10), 
+    legend.title = element_text(size = 10), 
+    panel.background = element_rect(fill = "white"), 
+    legend.key = element_rect(fill = "white"), 
+    legend.background = element_rect(fill = "white")) +
+  labs(title = "Covariation of Smartphone Use and Sadness", x = "Day", y = "Value (Z-Scored)", colour = "Variable")
+
+smartphone_sad_graph1 + gganimate::transition_reveal(Day)
+
+gganimate::anim_save("smartphone_sadness_covariation.gif")
+```
+
+
+
+
+
+
+
+
+
+
