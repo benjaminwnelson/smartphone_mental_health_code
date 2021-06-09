@@ -54,6 +54,8 @@ smartphone_data1 <- data.table::fread("~/Desktop/Manuscripts/Smartphone Use and 
 
 smartphone_data1 <- smartphone_data1 %>% 
   dplyr::select(-V1)
+
+demographics <- data.table::fread("~/Desktop/Manuscripts/Smartphone Use and Mental Health/demographics.csv")
 ```
 
 #Clean Data
@@ -228,7 +230,7 @@ smartphone_data3 <- smartphone_data2 %>%
   mutate(smartphone_total_min = sum(total_screentime_minutes, total_screentime_hours_to_min, na.rm = TRUE)) %>% 
   dplyr::select(-c(total_screentime_minutes, total_screentime_hours, total_screentime_hours_to_min))
 
-smartphone_data3$smartphone_total_hours <- smartphone_data3$smartphone_total_min/60
+smartphone_data3$sad_log10 <- smartphone_data3$smartphone_total_min/60
 ```
 
 ##Check Structure
@@ -283,40 +285,41 @@ data2 <- data1 %>%
   
 ```
 
-#Create Lagged Variables
+#Select Final Variables
 ```{r}
-#Create Next Day Smartphone Minutes and Hours
 data3 <- data2 %>% 
-  group_by(subject_id) %>% 
-  mutate(smartphone_total_min_lead1 = lead(smartphone_total_min, n = 1),
-         smartphone_total_min_lead2 = lead(smartphone_total_min, n = 2),
-         smartphone_total_hours_lead1 = lead(smartphone_total_hours, n = 1),
-         smartphone_total_hours_lead2 = lead(smartphone_total_hours, n = 2))
-
-#Create Next Day Affect
-data4 <- data3 %>% 
-  group_by(subject_id) %>% 
-  mutate(anxiety_lead1 = lead(anxious, n = 1),
-         anxiety_lead2 = lead(anxious, n = 2),
-         stress_lead1 = lead(stress, n = 1),
-         stress_lead2 = lead(stress, n = 2),
-         sad_lead1 = lead(sad, n = 1),
-         sad_lead2 = lead(sad, n = 2),
-         lonely_lead1 = lead(lonely, n = 1),
-         lonely_lead2 = lead(lonely, n = 2))
+  dplyr::select(subject_id,
+                Day,
+                TypeofDay,
+                PhoneType,
+                anxious,
+                stress,
+                happy,
+                sad,
+                lonely,
+                type_of_use,
+                grey_screentime,
+                unusual_night_use,
+                sad_log10)
 ```
 
-###Add Missing Day of Week and Date
-```{r eval=FALSE, include=FALSE}
-#data2 <- data1 %>% 
-#  tidyr::complete(subject_id, nesting(Day, DayofWeek), fill = list(DayofWeek = c("Monday", 
-#                                                                        "Tuesday", 
-#                                                                        "Wednesday", 
-#                                                                        "Thursday", 
-#                                                                        "Friday", 
-#                                                                        "Saturday", 
-#                                                                        "Sunday")))
+#Merge
+```{r}
+data4 <- left_join(data3, demographics, by = "subject_id")
+
+data4 <- data4 %>% 
+  dplyr::select(-V1)
+data4$age
+data4$gender <- as.factor(data4$gender)
+data4$race <- as.factor(data4$race)
+data4$age <- as.numeric(data4$age)
+data4$smfq <- as.numeric(data4$smfq)
+
+data4 <- as.data.frame(data4)
+
+str(data4)
 ```
+
 
 ##Check Missing Data
 ```{r}
@@ -332,22 +335,81 @@ data4 %>%
 naniar::gg_miss_var(data4, Day)
 ```
 
+#Remove Participant
+```{r}
+data5 <- data4 %>% 
+  dplyr::filter(subject_id != "P70")
+```
+
+#Imputation
+```{r}
+set.seed(123)
+
+all_imputations <- mice::mice(data5, maxit= 10, m = 10)
+
+#all_imputations <- mice::complete(all_imputations, "long")
+
+merged_imputations1 <- sjmisc::merge_imputations(
+  data5,
+  all_imputations,
+  ori = data5,
+  summary = c("none", "dens", "hist", "sd"),
+  filter = NULL
+)
+```
+
+
+
+#Create Lagged Variables
+```{r}
+#Create Next Day Smartphone Minutes and Hours
+merged_imputations2 <- merged_imputations1 %>% 
+  group_by(subject_id) %>% 
+  mutate(sad_log10_lead1 = lead(sad_log10_imp, n = 1),
+         sad_log10_lead2 = lead(sad_log10_imp, n = 2))
+
+#Create Next Day Affect
+final_imputations <- merged_imputations2 %>% 
+  group_by(subject_id) %>% 
+  mutate(anxiety_lead1 = lead(anxious_imp, n = 1),
+         anxiety_lead2 = lead(anxious_imp, n = 2),
+         stress_lead1 = lead(stress_imp, n = 1),
+         stress_lead2 = lead(stress_imp, n = 2),
+         sad_lead1 = lead(sad_imp, n = 1),
+         sad_lead2 = lead(sad_imp, n = 2),
+         lonely_lead1 = lead(lonely_imp, n = 1),
+         lonely_lead2 = lead(lonely_imp, n = 2),
+         sad_log10_lead1 = lead(sad_log10, n = 1),
+         sad_log10_lead2 = lead(sad_log10, n = 2))
+```
+
+###Add Missing Day of Week and Date
+```{r eval=FALSE, include=FALSE}
+#data2 <- data1 %>% 
+#  tidyr::complete(subject_id, nesting(Day, DayofWeek), fill = list(DayofWeek = c("Monday", 
+#                                                                        "Tuesday", 
+#                                                                        "Wednesday", 
+#                                                                        "Thursday", 
+#                                                                        "Friday", 
+#                                                                        "Saturday", 
+#                                                                        "Sunday")))
+```
+
 ##Descriptives
 ```{r}
-describeBy(data4)
+describeBy(final_imputations)
 
-data4$sad_log10 <- log(data4$sad)
-data4$sad_lead1_log10 <- log(data4$sad_lead1)
-data4$sad_lead2_log10 <- log(data4$sad_lead2)
-data4$anxious_log10 <- log(data4$anxious)
-data4$anxiety_lead1_log10 <- log(data4$anxiety_lead1)
-data4$anxiety_lead2_log10 <- log(data4$anxiety_lead2)
-data4$lonely_log10 <- log(data4$lonely)
-data4$lonely_lead1_log10 <- log(data4$lonely_lead1)
-data4$lonely_lead2_log10 <- log(data4$lonely_lead2)
+final_imputations$sad_log10 <- log(final_imputations$sad_imp)
+final_imputations$sad_lead1_log10 <- log(final_imputations$sad_lead1)
+final_imputations$sad_lead2_log10 <- log(final_imputations$sad_lead2)
+final_imputations$anxious_log10 <- log(final_imputations$anxious_imp)
+final_imputations$anxiety_lead1_log10 <- log(final_imputations$anxiety_lead1)
+final_imputations$anxiety_lead2_log10 <- log(final_imputations$anxiety_lead2)
+final_imputations$lonely_log10 <- log(final_imputations$lonely_imp)
+final_imputations$lonely_lead1_log10 <- log(final_imputations$lonely_lead1)
+final_imputations$lonely_lead2_log10 <- log(final_imputations$lonely_lead2)
 
-data4$total_notifications_log10 <- log(data4$total_notifications)
-data4$total_notifications_log10[data4$total_notifications_log10 == "-Inf"] <- NA
+final_imputations$subject_id <- as.factor(final_imputations$subject_id)
 ```
 
 ###Plot
@@ -361,8 +423,8 @@ hist(data1$lonely)
 boxplot(data1$lonely)
 
 #Smartphone Use Hours
-hist(data1$smartphone_total_hours)
-boxplot(data1$smartphone_total_hours)
+hist(data1$sad_log10)
+boxplot(data1$sad_log10)
 
 #Pickups
 hist(data1$total_pickups)
@@ -373,51 +435,142 @@ hist(data1$total_notifications)
 boxplot(data1$total_notifications)
 ```
 
+#Load Functions
+```{r}
+#Singular means you haven a variance component that is sitting on 0. It may or may not impact estimates. Should figure out if you threw something in the model that is not useful
+check_singularity <- function(lmerobj) {
+  tt <- getME(lmerobj,"theta") #RE estimates
+  ll <- getME(lmerobj,"lower") #lower bound on estimate
+  
+  #look for RE estimates that are very small (near zero) and the lower bound encompasses 0
+  low_re <- tt[ll==0 & tt < 1e-2]
+  return(low_re)
+}
+```
+
 
 
 #Analyses
 ##Create Between and Within Person Terms
 ```{r}
-data4 <- bmlm::isolate(data4, by = "subject_id",
-             value = c("smartphone_total_hours", "sad", "stress", "anxious", "happy", "lonely"),
+final_imputations <- bmlm::isolate(final_imputations, by = "subject_id",
+             value = c("sad_log10", "sad_log10_lead1", "sad_log10", "sad_lead1_log10", "sad_lead2_log10", "stress", "anxious_log10", "happy", "lonely_log10"),
              which = "both")
 ```
 
-##Covariation of Smartphone Use and Mood
+##Concurrent Models
+###Smartphone to Sad
 ```{r}
-concurrent_model <- lmer(sad ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1| subject_id), REML = TRUE, data = data4)
+#Random Intercept and Fixed Slope
+concurrent_model_sad1 <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_sad1)
 
-concurrent_model_ris <- lmer(lonely_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1  | subject_id), REML = TRUE, data = data4)
+#Random Intercept and Slope
+concurrent_model_sad2 <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 + smartphone_total_hours_cw | subject_id), REML = TRUE, data = final_imputations, control = lmerControl(optimizer ="Nelder_Mead"))
+summary(concurrent_model_sad2)
+check_singularity(concurrent_model_sad2) #Smartphone within subjects
 
-concurrent_model_ris <- lmer(smartphone_total_hours_lead1 ~ 1 + sad_cb + sad_cw + (1  | subject_id), REML = TRUE, data = data4)
+#Add Demographics
+concurrent_model_sad3 <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb + smartphone_total_hours_cw + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_sad3)
 
-summary(concurrent_model_ris)
-confint(concurrent_model)
-performance::check_convergence(concurrent_model) #converged okay
-performance::check_singularity(concurrent_model) #is not singular
-performance::r2(concurrent_model)
-performance::icc(concurrent_model)
-ggstatsplot::ggcoefstats(concurrent_model)
-performance::check_model(concurrent_model)
-performance::check_collinearity(concurrent_model)
-performance::model_performance(concurrent_model)
-FElmer(concurrent_model)
-FEplot(concurrent_model)
-ICClmer(concurrent_model)
-REplot(concurrent_model)
+#Add Interactions
+concurrent_model_sad4 <- lmer(sad_log10 ~ 1 + smartphone_total_hours_cb*smfq_imp + smartphone_total_hours_cw*smfq_imp + smartphone_total_hours_cb*digital_pressure_imp + smartphone_total_hours_cw*digital_pressure_imp + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_sad4)
+
+
+
+#Compare Model Fit
+anova(concurrent_model_sad1, concurrent_model_sad2, concurrent_model_sad3, concurrent_model_sad4) #Same Model Fit
+performance::compare_performance(concurrent_model_sad1, concurrent_model_sad2, concurrent_model_sad3, concurrent_model_sad4, rank = TRUE) #Use random intercept model and slope
+plot(performance::compare_performance(concurrent_model_sad1, concurrent_model_sad2, concurrent_model_sad3, concurrent_model_sad4, rank = TRUE))
+```
+
+###Sad to Smartphone
+```{r}
+#Random Intercept and Fixed Slope
+concurrent_model_smartphone1 <- lmer(smartphone_total_hours ~ 1 + sad_log10_cb + sad_log10_cw + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_smartphone1)
+
+#Random Intercept and Slope
+concurrent_model_smartphone2 <- lmer(smartphone_total_hours ~ 1 + sad_log10_cb + sad_log10_cw + (1 + sad_log10_cw | subject_id), REML = TRUE, data = final_imputations, control = lmerControl(optimizer ="Nelder_Mead"))
+summary(concurrent_model_smartphone2)
+check_singularity(concurrent_model_smartphone2) #Smartphone within subjects
+
+#Add Demographics
+concurrent_model_smartphone3 <- lmer(smartphone_total_hours ~ 1 + sad_log10_cb + sad_log10_cw + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_smartphone3)
+
+#Add Interactions
+concurrent_model_smartphone4 <- lmer(smartphone_total_hours ~ 1 + sad_log10_cb*smfq_imp + sad_log10_cw*smfq_imp + sad_log10_cb*digital_pressure_imp + sad_log10_cw*digital_pressure_imp + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(concurrent_model_smartphone4)
+check_singularity(concurrent_model_smartphone2)
+
+
+
+#Compare Model Fit
+anova(concurrent_model_smartphone1, concurrent_model_smartphone2, concurrent_model_smartphone3, concurrent_model_smartphone4) #Same Model Fit
+performance::compare_performance(concurrent_model_smartphone1, concurrent_model_smartphone2, concurrent_model_smartphone3, concurrent_model_smartphone4, rank = TRUE) #Use random intercept model and slope
+plot(performance::compare_performance(concurrent_model_smartphone1, concurrent_model_smartphone2, concurrent_model_smartphone3, concurrent_model_smartphone4, rank = TRUE))
+```
+
+##Lagged Models
+###Smartphone to Sad
+```{r}
+lagged_model_sad1 <- lmer(sad_lead1_log10 ~ 1 + sad_log10 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_sad1)
+
+lagged_model_sad2 <- lmer(sad_lead1_log10 ~ 1 + sad_log10 + smartphone_total_hours_cb + smartphone_total_hours_cw + (1 + smartphone_total_hours_cw | subject_id) , REML = TRUE, data = final_imputations)
+summary(lagged_model_sad2)
+check_singularity(lagged_model_sad2)
+
+lagged_model_sad3 <- lmer(sad_lead1_log10 ~ 1 + sad_log10 + smartphone_total_hours_cb + smartphone_total_hours_cw + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_sad3)
+
+lagged_model_sad4 <- lmer(sad_lead1_log10 ~ 1 + sad_log10*smfq_imp + smartphone_total_hours_cb*smfq_imp + smartphone_total_hours_cw*smfq_imp + sad_log10*digital_pressure_imp + smartphone_total_hours_cb*digital_pressure_imp + smartphone_total_hours_cw*digital_pressure_imp + age_imp + gender_imp + race_imp + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_sad4)
+
+
+
+
+
+
+anova(lagged_model_sad1, lagged_model_sad2, lagged_model_sad3, lagged_model_sad4)
+performance::compare_performance(lagged_model_sad1, lagged_model_sad2, lagged_model_sad3, lagged_model_sad4, rank = TRUE) #Use random intercept and slope model
+plot(performance::compare_performance(lagged_model_sad1, lagged_model_sad2, lagged_model_sad3, lagged_model_sad4, rank = TRUE))
+```
+
+###Sad to Smartphone
+```{r}
+lagged_model_smartphone1 <- lmer(smartphone_total_hours_lead1 ~ 1 + smartphone_total_hours + sad_log10_cb + sad_log10_cw + (1 | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_smartphone1)
+check_singularity(lagged_model_smartphone1)
+
+lagged_model_smartphone2 <- lmer(smartphone_total_hours_lead1 ~ 1 + smartphone_total_hours + sad_log10_cb + sad_log10_cw + (1 + sad_log10_cw | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_smartphone2)
+
+lagged_model_smartphone3 <- lmer(smartphone_total_hours_lead1 ~ 1 + smartphone_total_hours + sad_log10_cb + sad_log10_cw + age_imp + gender_imp + race_imp + (1 + sad_log10_cw | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_smartphone3)
+
+lagged_model_smartphone4 <- lmer(smartphone_total_hours_lead1 ~ 1 + smartphone_total_hours*smfq_imp + sad_log10_cb*smfq_imp + sad_log10_cw*smfq_imp + smartphone_total_hours*digital_pressure_imp + sad_log10_cb*digital_pressure_imp + sad_log10_cw*digital_pressure_imp + age_imp + gender_imp + race_imp + (1  | subject_id), REML = TRUE, data = final_imputations)
+summary(lagged_model_smartphone4)
+
+anova(lagged_model_smartphone1, lagged_model_smartphone2, lagged_model_smartphone3, lagged_model_smartphone4)
+performance::compare_performance(lagged_model_smartphone1, lagged_model_smartphone2, lagged_model_smartphone3, lagged_model_smartphone4, rank = TRUE) #Use random intercept and slope model
+plot(performance::compare_performance(lagged_model_smartphone1, lagged_model_smartphone2, lagged_model_smartphone3, lagged_model_smartphone4, rank = TRUE))
 ```
 
 #Graph Covariation
 ##Convert variables to Z-Score
 ```{r}
-graph_data <- data4 %>% 
+graph_data <- final_imputations %>% 
   dplyr::select(subject_id,
                 Day,
-                smartphone_total_hours,
-                sad)
+                sad_log10,
+                smartphone_total_hours_imp)
 
-graph_data$smartphone_total_hours_zscore <- scale(graph_data$smartphone_total_hours)
-graph_data$sad_zscore <- scale(graph_data$sad)
+graph_data$sad_log10_zscore <- scale(graph_data$sad_log10)
+graph_data$smartphone_zscore <- scale(graph_data$smartphone_total_hours_imp)
 
 
 str(graph_data)
@@ -426,7 +579,7 @@ str(graph_data)
 ##Turn Data Into Long
 ```{r}
 graph_data2 <- graph_data %>%  
-  pivot_longer(cols = c(smartphone_total_hours_zscore, sad_zscore), names_to = "variable", values_to = "value")
+  pivot_longer(cols = c(sad_log10_zscore, smartphone_zscore), names_to = "variable", values_to = "value")
 
 str(graph_data2)
 graph_data2$variable <- as.factor(graph_data2$variable)
